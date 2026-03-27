@@ -1,0 +1,1090 @@
+# LinkCube — Implementation Plan
+
+---
+
+# Phase 0 — Project Setup
+
+## 0.1 Define project modules
+
+Split project into 5 main modules:
+
+1. **Authentication**
+2. **File upload and storage**
+3. **File processing**
+4. **RAG pipeline**
+5. **Frontend integration**
+
+---
+
+## 0.3 Initialize backend
+
+Tasks:
+
+* create Node project
+* install Express
+* install TypeScript if using TS
+* setup dotenv
+* setup MongoDB connection
+* add basic server
+* add error handler
+* add request logger
+
+### Done when:
+
+* server runs
+* `/health` route works
+* MongoDB connects successfully
+
+---
+
+## 0.4 Initialize frontend
+
+Tasks:
+
+* generate initial UI with **v0**
+* export/download frontend
+* connect it into Next.js/React app
+* clean unnecessary demo sections
+* setup routing
+* setup API client
+
+### Done when:
+
+* homepage renders
+* login/register pages exist
+* dashboard shell exists
+
+---
+
+# Phase 1 — User Model and Authentication
+
+---
+
+## 1.1 Design User model
+
+Fields:
+
+* `name`
+* `email`
+* `password`
+* `role` (`admin`, `ngo`, `volunteer`)
+* `skills` (optional for volunteer)
+* `location`
+* `availability`
+* `createdAt`
+* `updatedAt`
+
+Optional later:
+
+* uploaded files count
+* assigned tasks
+* profile image
+
+---
+
+## 1.2 Build User schema
+
+Tasks:
+
+* create Mongoose schema
+* make email unique
+* hash password before save
+* add method to compare password
+
+### Small pieces
+
+* install bcrypt
+* write pre-save hook
+* write password compare method
+* test user creation in DB
+
+---
+
+## 1.3 Register API
+
+Route:
+
+* `POST /api/auth/register`
+
+Tasks:
+
+* validate input
+* check existing user
+* hash password
+* save user
+* return token/cookie
+
+### Validation
+
+* name required
+* email valid
+* password min length
+* role allowed values only
+
+---
+
+## 1.4 Login API
+
+Route:
+
+* `POST /api/auth/login`
+
+Tasks:
+
+* find user by email
+* compare password
+* generate auth token
+* send response
+
+---
+
+## 1.5 Auth token/session setup
+
+Choose one:
+
+### Option A: JWT
+
+Tasks:
+
+* create token util
+* sign token with user id
+* send token in cookie or response
+* verify token middleware
+
+### Option B: Session auth
+
+Tasks:
+
+* install express-session
+* configure session store
+* attach user to session
+* auth middleware from session
+
+For hackathon, **JWT in httpOnly cookie** is simple and solid.
+
+---
+
+## 1.6 Protected routes middleware
+
+Tasks:
+
+* read token
+* verify token
+* load user
+* attach user to `req.user`
+
+Add:
+
+* `isAuthenticated`
+* `authorizeRoles(...roles)`
+
+---
+
+## 1.7 Current user API
+
+Route:
+
+* `GET /api/auth/me`
+
+Tasks:
+
+* return logged-in user profile
+* exclude password
+
+---
+
+## 1.8 Logout API
+
+Route:
+
+* `POST /api/auth/logout`
+
+Tasks:
+
+* clear cookie or destroy session
+
+---
+
+## 1.9 Frontend auth integration
+
+Tasks:
+
+* create register form
+* create login form
+* connect to backend
+* store auth state
+* redirect after login
+* show current user on dashboard
+* add logout button
+
+### Done when:
+
+* user can register
+* user can login
+* protected pages work
+* refresh still keeps session if cookie-based
+
+---
+
+# Phase 2 — File Storage Design
+
+---
+
+## 2.1 Decide what “file storage” means
+
+You need two layers:
+
+### A. File metadata in MongoDB
+
+Store:
+
+* original filename
+* saved filename
+* path/url
+* mime type
+* size
+* uploaded by
+* processing status
+* extracted text status
+* embedding status
+
+### B. Actual file binary storage
+
+Initial options:
+
+* local disk using `uploads/`
+* Cloudinary / S3 later
+
+For MVP:
+
+* use **local storage**
+* later abstract storage into service
+
+---
+
+## 2.2 Create File model
+
+Fields:
+
+* `originalName`
+* `storedName`
+* `filePath`
+* `mimeType`
+* `size`
+* `uploadedBy`
+* `status`
+
+  * `uploaded`
+  * `processing`
+  * `processed`
+  * `failed`
+* `extractedText`
+* `chunkCount`
+* `embeddingStatus`
+* timestamps
+
+---
+
+## 2.3 Create storage service abstraction
+
+Make a service with methods:
+
+* `saveFile()`
+* `deleteFile()`
+* `getFilePath()`
+
+Even if local now, keep it abstract so cloud migration is easy.
+
+---
+
+# Phase 3 — File Upload Using Multer
+
+---
+
+## 3.1 Install and configure Multer
+
+Tasks:
+
+* install multer
+* set destination folder
+* create unique file names
+* restrict file types
+* limit file size
+
+Supported types initially:
+
+* pdf
+* txt
+* docx maybe later
+
+---
+
+## 3.2 Create upload middleware
+
+Tasks:
+
+* single file upload middleware
+* optional multi-file upload middleware
+* MIME type validation
+* error handling for invalid upload
+
+Routes:
+
+* `POST /api/files/upload`
+* maybe later `POST /api/files/upload-multiple`
+
+---
+
+## 3.3 Upload controller
+
+Flow:
+
+1. receive file
+2. save file metadata in DB
+3. return file info
+4. trigger processing
+
+Tasks:
+
+* read `req.file`
+* create DB record
+* link file with current user
+* set status to `uploaded`
+
+---
+
+## 3.4 File listing APIs
+
+Routes:
+
+* `GET /api/files`
+* `GET /api/files/:id`
+
+Tasks:
+
+* fetch current user’s files
+* support admin/global fetch later
+* pagination optional
+
+---
+
+## 3.5 File delete API
+
+Route:
+
+* `DELETE /api/files/:id`
+
+Tasks:
+
+* check ownership
+* remove physical file
+* remove DB metadata
+* remove embeddings later too
+
+---
+
+## 3.6 Frontend upload UI
+
+Tasks:
+
+* file picker
+* drag and drop zone
+* upload button
+* progress state
+* success/error toast
+* uploaded files list
+
+### v0 pages/components
+
+* upload card
+* file list table
+* file detail page
+
+### Done when:
+
+* user selects a file
+* upload succeeds
+* file appears in dashboard
+
+---
+
+# Phase 4 — Extract Text From Uploaded Files
+
+This is the bridge between upload and RAG.
+
+---
+
+## 4.1 Decide supported formats
+
+For MVP support:
+
+* `.txt`
+* `.pdf`
+
+Later:
+
+* `.docx`
+* `.csv`
+
+---
+
+## 4.2 Build parser service
+
+Create parser methods:
+
+* `extractTextFromTxt(filePath)`
+* `extractTextFromPdf(filePath)`
+
+Libraries:
+
+* for pdf: `pdf-parse`
+* for txt: fs read
+
+---
+
+## 4.3 Processing pipeline
+
+After upload:
+
+1. detect file type
+2. extract text
+3. clean text
+4. save extracted text in DB or separate collection
+5. chunk text
+6. embed chunks
+7. store vectors
+
+---
+
+## 4.4 Text cleaning step
+
+Tasks:
+
+* remove extra whitespace
+* normalize line breaks
+* strip repeated headers if needed
+* preserve meaningful structure
+
+---
+
+## 4.5 Update file statuses
+
+Statuses:
+
+* `uploaded`
+* `extracting_text`
+* `chunking`
+* `embedding`
+* `ready`
+* `failed`
+
+This is useful for frontend UI.
+
+---
+
+# Phase 5 — Chunking Strategy
+
+---
+
+## 5.1 Create chunking utility
+
+Tasks:
+
+* split long text into smaller chunks
+* maintain overlap between chunks
+
+Initial values:
+
+* chunk size: 500–800 words or token-equivalent
+* overlap: 100–150
+
+---
+
+## 5.2 Store chunks
+
+Create `DocumentChunk` model:
+
+* `fileId`
+* `userId`
+* `chunkIndex`
+* `text`
+* `embedding`
+* maybe `metadata`
+
+If vector DB stores vectors separately, still keep chunk text linked in DB.
+
+---
+
+## 5.3 Metadata per chunk
+
+Useful fields:
+
+* file name
+* upload date
+* user id
+* section/page number if available
+* category
+
+This helps retrieval quality.
+
+---
+
+# Phase 6 — RAG on Uploaded Files
+
+---
+
+## 6.1 Choose embedding model
+
+Options:
+
+* OpenAI embeddings
+* Gemini embeddings if available
+* local embedding model later
+
+For fastest MVP:
+
+* use hosted embeddings API
+
+---
+
+## 6.2 Choose vector storage
+
+Options:
+
+* MongoDB Atlas Vector Search
+* Pinecone
+* Chroma
+* Weaviate
+
+If you already use MongoDB, **MongoDB Atlas Vector Search** is a clean choice.
+
+---
+
+## 6.3 Embedding pipeline
+
+For each chunk:
+
+1. generate embedding
+2. store vector
+3. link vector to chunk metadata
+
+Tasks:
+
+* create `embedText()` service
+* batch process chunks
+* handle rate limits
+* retry failed embeddings
+
+---
+
+## 6.4 Retrieval service
+
+Input:
+
+* user question
+
+Flow:
+
+1. convert query to embedding
+2. retrieve top-k similar chunks
+3. pass chunks + question to LLM
+4. generate grounded answer
+
+Tasks:
+
+* top-k search
+* filter by user ownership
+* optional file-specific filtering
+* return citations/source chunk info
+
+---
+
+## 6.5 Answer generation service
+
+Prompt should include:
+
+* user question
+* retrieved chunks
+* instruction to answer only from context
+* say insufficient information if context weak
+
+Tasks:
+
+* write prompt template
+* build `askQuestionOverDocs(question, userId)` service
+* parse LLM response
+
+---
+
+## 6.6 RAG API routes
+
+Routes:
+
+* `POST /api/rag/ask`
+* `POST /api/rag/ask-file/:fileId`
+
+Possible request body:
+
+* `question`
+* optional `fileIds`
+
+---
+
+## 6.7 Response format
+
+Return:
+
+* answer
+* sources used
+* file names
+* relevant chunk previews
+
+This makes the assistant more trustworthy.
+
+---
+
+## 6.8 Frontend RAG UI
+
+Tasks:
+
+* question input box
+* answer panel
+* source chips/cards
+* loading state
+* chat history optional
+
+Views:
+
+* ask across all my uploaded files
+* ask only this file
+
+---
+
+# Phase 7 — Tie It to Your NGO Problem Statement
+
+Now make uploaded files meaningful for the hackathon theme.
+
+---
+
+## 7.1 What files are being uploaded?
+
+Examples:
+
+* NGO field reports
+* survey summaries
+* village need assessments
+* volunteer documents
+* case reports
+* spreadsheets converted to text later
+
+---
+
+## 7.2 AI use case from uploaded files
+
+System can answer:
+
+* “What urgent needs appear most often?”
+* “Which village needs medical support?”
+* “Are there repeated food shortage reports?”
+* “Which reports mention elderly beneficiaries?”
+* “Summarize key concerns from these uploaded documents.”
+
+---
+
+## 7.3 Add structured extraction from uploaded docs
+
+This can be phase 2 of AI:
+
+* extract location
+* extract category
+* extract urgency
+* extract people affected
+
+Save this structured data separately for dashboard use.
+
+---
+
+# Phase 8 — Dashboard Integration
+
+---
+
+## 8.1 Dashboard blocks
+
+Show:
+
+* total uploaded reports
+* total processed files
+* urgent needs extracted
+* pending tasks
+* volunteers matched
+
+---
+
+## 8.2 File processing states on dashboard
+
+Each file should show:
+
+* uploaded
+* processing
+* ready
+* failed
+
+---
+
+## 8.3 AI insights cards
+
+Use extracted data to show:
+
+* top need category
+* most affected region
+* number of high-priority reports
+* duplicated issue clusters
+
+---
+
+# Phase 9 — Small Backend Tasks Checklist
+
+---
+
+## 9.1 Utilities
+
+* env validation
+* async error wrapper
+* custom error class
+* response formatter
+* logger
+
+## 9.2 Middleware
+
+* auth middleware
+* role middleware
+* multer middleware
+* error middleware
+
+## 9.3 Models
+
+* User
+* UploadedFile
+* DocumentChunk
+* maybe QueryHistory
+
+## 9.4 Controllers
+
+* auth controller
+* file controller
+* rag controller
+
+## 9.5 Services
+
+* token service
+* storage service
+* parser service
+* chunking service
+* embedding service
+* retrieval service
+* llm answer service
+
+---
+
+# Phase 10 — Small Frontend Tasks Checklist
+
+---
+
+## 10.1 Auth pages
+
+* login page
+* register page
+* route protection
+* auth provider/context
+
+## 10.2 Dashboard pages
+
+* dashboard home
+* upload page
+* my files page
+* file detail page
+* ask AI page
+
+## 10.3 Components
+
+* navbar
+* sidebar
+* upload dropzone
+* file card/table
+* processing status badge
+* chat input
+* source result card
+
+## 10.4 API hooks
+
+* login mutation
+* register mutation
+* me query
+* upload mutation
+* files query
+* delete file mutation
+* ask rag mutation
+
+---
+
+# Phase 11 — Suggested Build Order
+
+This order will reduce pain.
+
+## Step 1
+
+Setup backend + frontend base
+
+## Step 2
+
+User model + register/login/logout/me
+
+## Step 3
+
+Protected dashboard frontend
+
+## Step 4
+
+Multer upload + file metadata save
+
+## Step 5
+
+List uploaded files on frontend
+
+## Step 6
+
+Extract text from txt/pdf
+
+## Step 7
+
+Chunk text and save chunks
+
+## Step 8
+
+Generate embeddings and store vectors
+
+## Step 9
+
+Build retrieval API
+
+## Step 10
+
+Build ask-question UI
+
+## Step 11
+
+Add source citations in answer
+
+## Step 12
+
+Add NGO-specific extracted insights
+
+---
+
+# Phase 12 — MVP Scope
+
+For hackathon, your MVP should be:
+
+### Must have
+
+* user auth
+* upload files
+* store file metadata
+* parse pdf/txt
+* chunk + embed
+* ask questions on uploaded docs
+* show grounded answers
+* basic dashboard
+
+### Good to have
+
+* file-specific chat
+* citations
+* urgency extraction
+* category tagging
+
+### Can skip initially
+
+* multi-tenant org management
+* advanced volunteer scheduling
+* multilingual parsing
+* OCR on image PDFs
+* cloud file storage
+
+---
+
+# Phase 13 — Example API List
+
+## Auth
+
+* `POST /api/auth/register`
+* `POST /api/auth/login`
+* `POST /api/auth/logout`
+* `GET /api/auth/me`
+
+## Files
+
+* `POST /api/files/upload`
+* `GET /api/files`
+* `GET /api/files/:id`
+* `DELETE /api/files/:id`
+
+## RAG
+
+* `POST /api/rag/ask`
+* `POST /api/rag/ask-file/:fileId`
+
+---
+
+# Phase 14 — Example Mongo Models
+
+## User
+
+* id
+* name
+* email
+* password
+* role
+* skills
+* location
+
+## UploadedFile
+
+* id
+* originalName
+* storedName
+* filePath
+* mimeType
+* size
+* uploadedBy
+* status
+* extractedText
+
+## DocumentChunk
+
+* id
+* fileId
+* userId
+* chunkIndex
+* text
+* embedding/vector ref
+* metadata
+
+---
+
+# Phase 15 — Risks to Watch Early
+
+## 1. Upload works but parsing fails
+
+Fix by supporting only txt/pdf first.
+
+## 2. RAG quality is poor
+
+Fix with better chunking and metadata.
+
+## 3. Answers hallucinate
+
+Fix with strict prompt: answer only from retrieved context.
+
+## 4. Large file delays
+
+Fix using async processing and processing status.
+
+## 5. Frontend and backend auth mismatch
+
+Fix cookie/CORS setup early.
+
+---
+
+# Phase 16 — Ideal Team Split
+
+If working in a team:
+
+## Person 1
+
+Auth + backend APIs
+
+## Person 2
+
+File upload + parsing + DB
+
+## Person 3
+
+RAG pipeline + embedding + retrieval
+
+## Person 4
+
+Frontend + v0 integration + dashboard
+
+---
+
+# Phase 17 — Very Small Daily Task Breakdown
+
+## Day 1
+
+* setup backend
+* setup frontend
+* connect MongoDB
+* create base routes
+
+## Day 2
+
+* build user model
+* register/login/logout/me
+* frontend auth pages
+
+## Day 3
+
+* setup Multer
+* upload endpoint
+* file metadata model
+* upload UI
+
+## Day 4
+
+* file listing page
+* parser for txt/pdf
+* save extracted text
+
+## Day 5
+
+* chunking utility
+* document chunk model
+* embedding service
+
+## Day 6
+
+* vector search
+* RAG ask API
+* answer generation
+
+## Day 7
+
+* chat UI
+* source cards
+* dashboard summary
+* polish demo
+
+---
+
+# Phase 18 — Best Demo Flow
+
+For your hackathon demo:
+
+1. user logs in
+2. uploads NGO field report PDF
+3. file gets processed
+4. dashboard shows extracted need summary
+5. user asks:
+
+   * “What are the urgent needs in this file?”
+6. RAG answers with source-backed output
+7. optionally show:
+
+   * “Suggest what volunteer type is needed”
+
+That will look very strong.
+
+---
+
+If you want, I can turn this next into a **full Trello/Jira-style task board with checkboxes and subtasks**.
